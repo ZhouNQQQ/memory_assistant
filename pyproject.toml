@@ -1,0 +1,30 @@
+[project]
+name = "kimiclaw-memory"
+version = "0.1.0"
+description = "可嵌入的 mem0 记忆框架：Python 门面 API + MCP server，主集成目标 Kimi/Daimon，与其原生记忆共存。"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "mem0ai>=0.1",
+    "chromadb",
+    "openai",
+    "numpy",
+    "requests",
+    "python-dotenv",
+    "mcp>=1.0",
+]
+
+[project.scripts]
+kimiclaw-memory-mcp = "kimiclaw_memory.mcp_server:main"
+
+[project.optional-dependencies]
+test = ["hypothesis"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# 同时打包新外壳包 kimiclaw_memory 与既有核心包 memory（既有代码不改动，按命名空间一起分发）
+packages = ["src/kimiclaw_memory", "src/memory"]
