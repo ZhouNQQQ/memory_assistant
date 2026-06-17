@@ -50,9 +50,15 @@ def _close_memory() -> None:
             _memory = None
 
 
-def _dispatch(fn: Callable[..., Any], **kwargs: Any) -> Dict[str, Any]:
-    """统一执行 + 错误包装。绝不向客户端泄露堆栈。"""
+def _dispatch(method: str, **kwargs: Any) -> Dict[str, Any]:
+    """统一执行 + 错误包装。绝不向客户端泄露堆栈。
+
+    门面获取（`get_memory()`，可能因缺少密钥抛 ConfigError）也在 try 内进行，
+    确保构造期错误同样被包装为 `{ok:false, code}` 而非裸异常。
+    """
     try:
+        mem = get_memory()
+        fn = getattr(mem, method)
         return {"ok": True, "data": fn(**kwargs)}
     except Exception as exc:  # noqa: BLE001  统一兜底
         code = _classify(exc)
@@ -81,37 +87,41 @@ def _classify(exc: Exception) -> str:
 @app.tool()
 def memory_add(messages: str, user_id: str) -> Dict[str, Any]:
     """把一段对话/事实写入长期记忆。messages 为纯文本或 JSON 消息数组字符串。"""
-    return _dispatch(get_memory().add, messages=messages, user_id=user_id)
+    return _dispatch("add", messages=messages, user_id=user_id)
 
 
 @app.tool()
 def memory_search(query: str, user_id: str, limit: int = 5) -> Dict[str, Any]:
     """按语义检索某用户的长期记忆，返回最相关的若干条。"""
-    return _dispatch(get_memory().search, query=query, user_id=user_id, limit=limit)
+    return _dispatch("search", query=query, user_id=user_id, limit=limit)
 
 
 @app.tool()
 def memory_get_all(user_id: str, limit: int = 100) -> Dict[str, Any]:
     """列出某用户的全部记忆（分页上限 limit）。"""
-    return _dispatch(get_memory().get_all, user_id=user_id, limit=limit)
+    return _dispatch("get_all", user_id=user_id, limit=limit)
 
 
 @app.tool()
 def memory_delete(memory_id: str, user_id: str) -> Dict[str, Any]:
     """按记忆 id 删除一条记忆。"""
-    return _dispatch(get_memory().delete, memory_id=memory_id, user_id=user_id)
+    return _dispatch("delete", memory_id=memory_id, user_id=user_id)
 
 
 @app.tool()
 def memory_compact(user_id: Optional[str] = None, dry_run: bool = False) -> Dict[str, Any]:
     """触发压缩（时间衰减归档 + 去重合并 + 滚动摘要）。"""
-    return _dispatch(get_memory().compact, user_id=user_id, dry_run=dry_run)
+    return _dispatch("compact", user_id=user_id, dry_run=dry_run)
 
 
 def main() -> None:
-    """控制台入口：构造门面并以 stdio 运行 MCP server。"""
+    """控制台入口：以 stdio 运行 MCP server。
+
+    门面采用惰性构造（首个工具调用时才 `Memory.from_env()`），因此即使尚未
+    配置密钥，server 也能正常启动并通告工具列表；缺失配置会在具体工具调用时
+    以 `{ok:false, code:"CONFIG"}` 形式返回，而不是让进程启动即崩溃。
+    """
     logging.basicConfig(level=logging.INFO)
-    get_memory()  # 启动期即构造，便于尽早暴露配置错误
     app.run(transport="stdio")
 
 
